@@ -7,7 +7,7 @@ This is my attempt at creating a combinatory parser library that feels easy to u
 
 Simply import the module and call its main function, creating a new parselMouth instance:
 
-```
+```ts
 import parselMouth from "parselMouth";
 
 const pm = parselMouth();
@@ -29,10 +29,11 @@ Here an example of some parsers:
  - ```pm.same```: Validates, that the parsed position in the code is the same as the captured results of another given parser.
  - ```pm.ahead```: Validates, that the position in front of the current one fits the given parser.
  - ```pm.back```: Validates, that the position behind the current one fits the given parser.
+
 Many more, feel free to explore!
 
 *With this, you could build something like that:*
-```
+```ts
 import parselMouth from "parselMouth";
 
 const pm = parselMouth();
@@ -59,7 +60,7 @@ Parsers also have their own methods, such as:
  - ```parser.getResult```: Returns the result from the last parsed code.
 
 *Let's revisit our code!*
-```
+```ts
 import parselMouth from "parselMouth";
 
 const pm = parselMouth();
