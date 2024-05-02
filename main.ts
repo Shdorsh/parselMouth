@@ -726,6 +726,9 @@ class parselMouth {
     }
 
     this.parsingResult = endResult;
+    if (endResult.capture && !endResult.error) {
+      endResult.success = true;
+    }
     return endResult;
   };
 
