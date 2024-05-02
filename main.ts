@@ -4,8 +4,6 @@
  * Now watch me fail
  */
 
-import { create } from "domain";
-
 /**
  * Main form of all the return values of a parsing function
  * @param success
@@ -48,8 +46,8 @@ interface IParsingError {
   message: string;
 }
 
-type Maybe<T> = null|T;
-type TCapture = (string|TCapture)[];
+type Maybe<T> = null | T;
+type TCapture = (string | TCapture)[];
 type TParserFunction = (code: string, currentPosition: number) => IParserResult;
 
 // Set up some quick helpers for the most common cases
@@ -73,7 +71,7 @@ const positionExceedsLength = (
  * @param start The starting char from which to count
  * @param end The ending char which to count to
  * @param initial The amount of lines already read
- * @returns 
+ * @returns
  */
 const calculateNumberOfLines = (
   code: string,
@@ -131,11 +129,13 @@ const flattenCapture = (capture: TCapture): string => {
   const flattenedCapture: TCapture = [];
 
   for (const captured of capture) {
-    flattenedCapture.push(typeof captured === "string" ? captured : flattenCapture(captured));
+    flattenedCapture.push(
+      typeof captured === "string" ? captured : flattenCapture(captured)
+    );
   }
 
   return flattenedCapture.join("");
-}
+};
 
 // Some small combinators that are already preset
 const isAtStart: TParserFunction = (code, position) => {
@@ -207,6 +207,24 @@ const isCharADigit: TParserFunction = (code, position) => {
     end: position + 1,
   };
 };
+
+const captureAnyChar =
+  (amountOfChars = 1): TParserFunction =>
+  (code, position) => {
+    const endPosition = position + amountOfChars;
+    const result = createNewParserResult();
+    result.start = position;
+    if (endPosition >= code.length) {
+      result.error = true;
+      result.end = code.length;
+      return result;
+    }
+
+    result.success = true;
+    result.capture = [code.substring(position, endPosition)];
+    result.end = endPosition;
+    return result;
+  };
 
 const isCharASpecificCharacter =
   (character: string): TParserFunction =>
@@ -291,7 +309,6 @@ const chainMultipleParsers =
       position = intermediateResult.end;
     }
 
-    console.log(capture, position);
     return {
       error,
       success: capture ? true : false,
@@ -328,14 +345,17 @@ const charCanFitRepeatedly =
     const result = createNewParserResult();
     result.start = position;
     result.end = position;
-  
+
     let intermediateResult = createNewParserResult();
     while (!intermediateResult.error && result.end < code.length) {
       intermediateResult = parser.run(code, result.end);
       if (intermediateResult.capture) {
         result.success = true;
         result.end = intermediateResult.end;
-        result.capture = addToCapture(result.capture, intermediateResult.capture);
+        result.capture = addToCapture(
+          result.capture,
+          intermediateResult.capture
+        );
       }
     }
 
@@ -392,17 +412,19 @@ const lookAtOffset =
 const checkIfNextCharFits = lookAtOffset(1);
 const checkIfPreviousCharFits = lookAtOffset(-1);
 
-const sameAsCapturedResult = (parser: Parser): TParserFunction =>
+const sameAsCapturedResult =
+  (parser: Parser): TParserFunction =>
   (code, position) => {
     let capture = parser.getResults()?.capture;
 
-    if(!capture) {
-      throw Error("Error parsing sameAsCapturedResult: found no parsed results from dependency");
+    if (!capture) {
+      throw new Error(
+        "Error parsing sameAsCapturedResult: found no parsed results from dependency"
+      );
     }
 
     return isStringASpecificString(flattenCapture(capture))(code, position);
   };
-
 
 class Parser {
   private parsingFunction: TParserFunction;
@@ -535,6 +557,13 @@ class parselMouth {
   };
 
   /**
+   * Validates any string of a given size. By default one.
+   * @returns Parser
+   */
+  any = (amountOfChars: number = 1) =>
+    new Parser(captureAnyChar(amountOfChars));
+
+  /**
    * Validates the end of a line for the given code. Can be very useful when combined with ahead (i.e. ahead(newline()))
    * @returns Parser
    */
@@ -590,8 +619,8 @@ class parselMouth {
 
   /**
    * Validates whether the string at the position in the code is the same as the result of a given parser
-   * @param parser 
-   * @returns 
+   * @param parser
+   * @returns
    */
   same = (parser: Parser) => new Parser(sameAsCapturedResult(parser));
 
@@ -640,7 +669,7 @@ class parselMouth {
   /**
    * Runs the parser on the given code. The results can be received from getResults()
    */
-  run = (code: string) => {
+  run = (code: string): IParserResult => {
     this.errors.length = 0;
 
     let lastErroredLine = 1;
@@ -697,6 +726,7 @@ class parselMouth {
     }
 
     this.parsingResult = endResult;
+    return endResult;
   };
 
   /**
