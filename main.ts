@@ -158,7 +158,7 @@ const isAtStart: TParserFunction = (code, position) => {
   };
 };
 const isAtEnd: TParserFunction = (code, position) => {
-  const isAtStart = position === code.length - 1;
+  const isAtStart = position === code.length;
   return {
     success: isAtStart,
     capture: null,
