@@ -56,7 +56,7 @@ Parsers also have their own methods, such as:
  - ```parser.join```: Joins the captured group into an array with a single concatenated string. Returns the parser for chaining.
  - ```parser.map```: Allows you to set a mapping function that will be run on the result of the next parsed code. Returns the parser for chaining.
  - ```parser.error```: Sets the error message of a parser. Returns the parser for chaining.
- - ```parser.getError```: Returns the error from the last parsed code.
+ - ```parser.getError```: Returns the errormessage set for the partser.
  - ```parser.getResult```: Returns the result from the last parsed code.
 
 *Let's revisit our code!*
