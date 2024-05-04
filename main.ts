@@ -37,6 +37,11 @@ interface IParserResult {
    * The position where the matching ended
    */
   end: number;
+
+  /**
+   * The string put out by the parser result
+   */
+  message?: string;
 }
 
 interface IParsingError {
@@ -46,22 +51,25 @@ interface IParsingError {
   message: string;
 }
 
+interface IPrecheckResult {
+  error: boolean;
+  message: string
+}
+
 type Maybe<T> = null | T;
 type TCapture = (string | TCapture)[];
 type TParserFunction = (code: string, currentPosition: number) => IParserResult;
+type TPrecheckFunction = (code: string, positiong: number) => IPrecheckResult;
 
 // Set up some quick helpers for the most common cases
-const positionExceedsLength = (
+const positionExceedsLength: TPrecheckFunction = (
   code: string,
   position: number
-): IParserResult => {
+) => {
   const exceedsEnd = position > code.length;
   return {
-    success: !exceedsEnd,
     error: exceedsEnd,
-    capture: null,
-    start: position,
-    end: position,
+    message: `Error: Code length (${code.length}) exceeded currently checked position (${position})`
   };
 };
 
@@ -89,12 +97,13 @@ const calculateNumberOfLines = (
  * Instantiates a new parser result object
  * @returns IParserResult
  */
-const createNewParserResult = (): IParserResult => ({
+const createNewParserResult = (position?: number, endPosition?: number, message?: string): IParserResult => ({
   error: false,
   success: false,
-  start: 0,
-  end: 0,
+  start: position ?? 0,
+  end: endPosition ?? position ?? 0,
   capture: null,
+  message
 });
 
 /**
@@ -212,8 +221,7 @@ const captureAnyChar =
   (amountOfChars = 1): TParserFunction =>
   (code, position) => {
     const endPosition = position + amountOfChars;
-    const result = createNewParserResult();
-    result.start = position;
+    const result = createNewParserResult(position, endPosition);
     if (endPosition >= code.length) {
       result.error = true;
       result.end = code.length;
@@ -290,11 +298,6 @@ const chainMultipleParsers =
     let error = false;
 
     for (let parser of parsers) {
-      let positionCheck = positionExceedsLength(code, position);
-      if (positionCheck.error) {
-        return positionCheck;
-      }
-
       const intermediateResult = parser.run(code, position);
 
       if (intermediateResult.error) {
@@ -395,12 +398,8 @@ const lookAtOffset =
   (parser: Parser): TParserFunction =>
   (code, position) => {
     const lookedPosition = position + offset;
-    let result = positionExceedsLength(code, lookedPosition);
-    if (result.error) {
-      return result;
-    }
 
-    result = parser.getParsingFunction()(code, lookedPosition);
+    const result = parser.run(code, lookedPosition);
     return {
       ...result,
       capture: null,
@@ -430,11 +429,13 @@ class Parser {
   private parsingFunction: TParserFunction;
   private errorMessage: string = "Error parsing";
   private results: IParserResult | null = null;
-  private mappingFunction: ((captureGroup: TCapture) => TCapture) | null = null;
+  private mappingFunction?: ((captureGroup: TCapture) => TCapture);
+  private precheckFunction?: TPrecheckFunction;
   private joinResult = false;
 
-  constructor(parsingFunction: TParserFunction) {
+  constructor(parsingFunction: TParserFunction, precheckFunction?: TPrecheckFunction) {
     this.parsingFunction = parsingFunction;
+    this.precheckFunction = precheckFunction;
   }
 
   /**
@@ -444,6 +445,19 @@ class Parser {
    * @returns IParserResult
    */
   run = (code: string, position: number): IParserResult => {
+    if(this.precheckFunction) {
+      const precheck = this.precheckFunction(code, position);
+      if (precheck.error) {
+        return {
+          start: position,
+          end: position,
+          error: true,
+          success: false,
+          capture: null,
+          message: precheck.message
+        }
+      }
+    }
     this.results = this.parsingFunction(code, position);
     if (this.results.capture) {
       if (this.joinResult) {
@@ -495,19 +509,11 @@ class Parser {
     return this;
   };
 
-  getError = (): IParsingError | null =>
-    this.results?.error
-      ? {
-          start: this.results?.start,
-          end: this.results?.end,
-          line: 0,
-          message: this.errorMessage,
-        }
-      : null;
+  getError = () => this.errorMessage;
 
   getResults = (): IParserResult | null => this.results;
 
-  getParsingFunction = (): TParserFunction => this.parsingFunction;
+  getPreCheckFunction = (): TPrecheckFunction|undefined => this.precheckFunction;
 }
 
 /**
@@ -522,25 +528,25 @@ class parselMouth {
    * Validates that the currently checked character is a letter
    * @returns Parser
    */
-  letter = () => new Parser(isCharALetter);
+  letter = () => new Parser(isCharALetter, positionExceedsLength);
 
   /**
    * Validates that the currently checked character is specifically an uppercase letter
    * @returns Parser
    */
-  upperCaseLetter = () => new Parser(isCharAnUpperCaseLetter);
+  upperCaseLetter = () => new Parser(isCharAnUpperCaseLetter, positionExceedsLength);
 
   /**
    * Validates that the currently checked character is specifically a lowercase letter
    * @returns Parser
    */
-  lowerCaseLetter = () => new Parser(isCharALowerCaseLetter);
+  lowerCaseLetter = () => new Parser(isCharALowerCaseLetter, positionExceedsLength);
 
   /**
    * Validates that the currently checked character is a digit
    * @returns Parser
    */
-  digit = () => new Parser(isCharADigit);
+  digit = () => new Parser(isCharADigit, positionExceedsLength);
 
   /**
    * Validates that the currently checked character is the certain given character
@@ -553,7 +559,7 @@ class parselMouth {
         `parselMouth.char() error: Accepting only a single character, received: ${char}`
       );
     }
-    return new Parser(isCharASpecificCharacter(char));
+    return new Parser(isCharASpecificCharacter(char), positionExceedsLength);
   };
 
   /**
@@ -561,20 +567,20 @@ class parselMouth {
    * @returns Parser
    */
   any = (amountOfChars: number = 1) =>
-    new Parser(captureAnyChar(amountOfChars));
+    new Parser(captureAnyChar(amountOfChars), positionExceedsLength);
 
   /**
    * Validates the end of a line for the given code. Can be very useful when combined with ahead (i.e. ahead(newline()))
    * @returns Parser
    */
-  newline = () => new Parser(isCharASpecificCharacter("\n"));
+  newline = () => new Parser(isCharASpecificCharacter("\n"), positionExceedsLength);
 
   /**
    * Validates that the entire next sequence is the same as the given string
    * @param str The string to check against
    * @returns Parser
    */
-  string = (str: string) => new Parser(isStringASpecificString(str));
+  string = (str: string) => new Parser(isStringASpecificString(str), positionExceedsLength);
 
   /**
    * Validates whether the current code fits one of the given parsers
@@ -615,7 +621,7 @@ class parselMouth {
    * @param parser The parser who should be inverted
    * @returns Parser
    */
-  not = (parser: Parser) => new Parser(doesntFitParser(parser));
+  not = (parser: Parser) => new Parser(doesntFitParser(parser), positionExceedsLength);
 
   /**
    * Validates whether the string at the position in the code is the same as the result of a given parser
@@ -642,7 +648,7 @@ class parselMouth {
    * Looks whether the parser is at the start of the code
    * @returns Parser
    */
-  atStart = () => new Parser(isAtStart);
+  atStart = () => new Parser(isAtStart, positionExceedsLength);
 
   /**
    * Looks whether the parser has reached the end of the code
@@ -655,8 +661,8 @@ class parselMouth {
    * @param customFn
    * @returns Parser
    */
-  custom = (customFn: (code: string, position: number) => IParserResult) =>
-    new Parser(customFn);
+  custom = (customParsingFn: TParserFunction, customPrecheckFn: TPrecheckFunction) =>
+    new Parser(customParsingFn, customPrecheckFn);
 
   /**
    * This adds the parsers created with the other methods into the list of parsers that will be executed on run(). This is mandatory so that the parsers are used and allows for more control
@@ -678,35 +684,18 @@ class parselMouth {
     const endResult: IParserResult = createNewParserResult();
 
     for (const parser of this.parserList) {
-      let positionCheck = positionExceedsLength(code, endResult.end);
-      if (positionCheck.error) {
-        this.errors.push({
-          start: endResult.end,
-          end: endResult.end,
-          line: calculateNumberOfLines(
-            code,
-            lastErroredPosition,
-            -1,
-            lastErroredLine
-          ),
-          message: "Reached end of code",
-        });
-
-        return {
-          ...endResult,
-          error: true,
-        };
-      }
-
       const intermediateResult = parser.run(code, endResult.end);
 
       // If there are errors, get the new line and position that is erroring out
-      const error = parser.getError();
-      if (error) {
-        endResult.success = false;
-        endResult.error = true;
-
+      if (intermediateResult.error) {
         // Get the line from where the parsing errored
+        const error: IParsingError = {
+          start: intermediateResult.start,
+          end: intermediateResult.end,
+          line: lastErroredLine,
+          message: intermediateResult.message ?? parser.getError()
+        }
+
         error.line = calculateNumberOfLines(
           code,
           lastErroredPosition,
@@ -715,6 +704,11 @@ class parselMouth {
         );
         lastErroredPosition = intermediateResult.end;
         this.errors.push(error);
+        
+        endResult.success = false;
+        endResult.error = true;
+        endResult.message = intermediateResult.message;
+
       } else if (intermediateResult.success) {
         endResult.capture = addToCapture(
           endResult.capture,
