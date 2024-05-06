@@ -5,6 +5,9 @@ This is my attempt at creating a combinatory parser library that feels easy to u
 
 ### How do I start?
 
+Using the node package manager, parselmouth can be easily installed via:
+```npm i parselmouth```
+
 Simply import the module and call its main function, creating a new parselMouth instance:
 
 ```ts
